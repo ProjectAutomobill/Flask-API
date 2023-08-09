@@ -54,6 +54,7 @@ class UserData:
         self.paymentInData = []
         self.paymentOutData = []
         self.sale_order_data = []
+        self.eq_data = []
         self.e_q_flg = []
         self.settingID = None
         self.getCompanyNames()
@@ -88,10 +89,11 @@ class UserData:
 
                 for doc_C in companyDocs:
                     # print('{} => {} '.format(doc_C.id, doc_C.to_dict()))
-                    self.companyID = doc_C.id
+
                     self.company_name = str(doc_C.to_dict()["name"])
                     # print("Setting company name :  " + str(doc_C.to_dict()["name"]))
                     if self.company_name == self.company:
+                        self.companyID = doc_C.id
                         print("Company Found")
                         parties = db.collection(
                             "users", doc.id, "company", doc_C.id, "parties"
@@ -105,8 +107,9 @@ class UserData:
                             "users", doc.id, "company", doc_C.id, "settings"
                         )
                         settingsDocs = settings.stream()
-
+                        print("In Settings......")
                         for doc_S in settingsDocs:
+                            print("@@@@@@@@@@@@@@@@@@@" + str(doc_S.id))
                             self.settingID = doc_S.id
                             self.general_settings.append({"settings": doc_S.to_dict()})
                         # =====================================================
@@ -206,7 +209,7 @@ class UserData:
                                         doc_T.to_dict()["Balance"]
                                     )
 
-                                else:
+                                elif doc_T.to_dict()["Type"] == "Purchase":
                                     purchase_amount = (
                                         purchase_amount + doc_T.to_dict()["Total"]
                                     )
@@ -231,7 +234,7 @@ class UserData:
                                             "Payment_Type": "Cash",
                                             "Transaction_Type": doc_T.to_dict()["Type"],
                                             "PartyName": doc_P.to_dict()["PartyName"],
-                                            "Invoice_No": 0,
+                                            "Invoice_No": doc_T.to_dict()["Invoice_no"],
                                         }
                                     )
                                     pendingBalancePurchase = (
@@ -243,6 +246,51 @@ class UserData:
                                         {
                                             "Item": doc_T.to_dict()["Item"],
                                             "Price": doc_T.to_dict()["Total"],
+                                        }
+                                    )
+                                elif doc_T.to_dict()["Type"] == "SaleOrder":
+                                    self.sale_order_data.append(
+                                        {
+                                            "PartyName": doc_P.to_dict()["PartyName"],
+                                            "Item": doc_T.to_dict()["Item"],
+                                            "Number": int(doc_T.to_dict()["Number"]),
+                                            "Price": int(doc_T.to_dict()["Price"]),
+                                            "Total": float(doc_T.to_dict()["Total"]),
+                                            "Type": "SaleOrder",
+                                            "Balance": float(
+                                                doc_T.to_dict()["Balance"]
+                                            ),
+                                            "Date": doc_T.to_dict()["Date"],
+                                            "Due_Date": doc_T.to_dict()["Due_Date"],
+                                            "order_no": int(
+                                                doc_T.to_dict()["order_no"]
+                                            ),
+                                            "tax": doc_T.to_dict()["tax"],
+                                            "tax_amount": doc_T.to_dict()["tax_amount"],
+                                            "unit": doc_T.to_dict()["unit"],
+                                            "StateOfSupply": doc_T.to_dict()[
+                                                "StateOfSupply"
+                                            ],
+                                        }
+                                    )
+                                elif doc_T.to_dict()["Type"] == "EQ":
+                                    self.eq_data.append(
+                                        {
+                                            "Balance": doc_T.to_dict()["Balance"],
+                                            "Total": doc_T.to_dict()["Total"],
+                                            "Date": doc_T.to_dict()["Date"],
+                                            "Item": doc_T.to_dict()["Item"],
+                                            "Number": doc_T.to_dict()["Number"],
+                                            "Payment_Type": "Cash",
+                                            "Transaction_Type": doc_T.to_dict()["Type"],
+                                            "PartyName": doc_P.to_dict()["PartyName"],
+                                            "Invoice_No": doc_T.to_dict()["Invoice_no"],
+                                            "tax": doc_T.to_dict()["tax"],
+                                            "tax_amount": doc_T.to_dict()["tax_amount"],
+                                            "unit": doc_T.to_dict()["unit"],
+                                            "StateOfSupply": doc_T.to_dict()[
+                                                "StateOfSupply"
+                                            ],
                                         }
                                     )
                             # if pendingBalance != 0:
@@ -279,6 +327,11 @@ class UserData:
                             self.itemNames.append(
                                 {
                                     "Name": doc_I.to_dict()["ItemName"],
+                                    "Units": doc_I.to_dict()["Units"],
+                                    "Sale_Price": doc_I.to_dict()["Sale_Price"],
+                                    "Wholesale_Price": doc_I.to_dict()[
+                                        "Wholesale_Price"
+                                    ],
                                     "Units": doc_I.to_dict()["Units"],
                                 }
                             )
@@ -333,8 +386,8 @@ class UserData:
                         )
                         saleOrderDocs = saleOrderDetails.stream()
 
-                        for doc_SO in saleOrderDocs:
-                            self.sale_order_data.append(doc_SO.to_dict())
+                        # for doc_SO in saleOrderDocs:
+                        #     self.sale_order_data.append(doc_SO.to_dict())
 
                         break
 
@@ -347,6 +400,8 @@ def getGeneralSettings():
     number = request.args.get("number")
     company = request.args.get("company")
     userData = UserData(number, company)
+    print("#####################################################")
+    print(userData.general_settings)
     return {"eq": userData.general_settings[0]["settings"]["eq"]}
 
 
@@ -358,10 +413,13 @@ def updateGeneralEQSettings():
 
     boolVal = False
     print(str(int(value)) + str(">>>>>>>>>>>>>>>>>>>>>>>>>"))
+
     if int(value) == 1:
         boolVal = True
 
     userData = UserData(number, company)
+    print(userData.settingID)
+    print("<<<<<<<<<<<<<<<<<<<<<<<")
     db.collection(
         "users", userData.doc_id, "company", userData.companyID, "settings"
     ).document(userData.settingID).update({"eq": boolVal})
@@ -424,6 +482,36 @@ def getCompaniesNames():
     return userData.companies_list
 
 
+@app.route("/addNewBusiness")
+def addNewBusiness():
+    number = request.args.get("number")
+    pnumber = request.args.get("pnumber")
+    email = request.args.get("email")
+    name = request.args.get("name")
+
+    userData = UserData(number, " ")
+    db.collection("users", userData.doc_id, "company").add(
+        {"name": str(name), "number": str(pnumber), "email": str(email)}
+    )
+
+    return "Added new Company"
+
+
+@app.route("/createDefaultCompany")
+def createDefaultCompany():
+    number = request.args.get("number")
+
+    db.collection(
+        "users",
+    ).add({"number": str(number)})
+
+    userData = UserData(number, " ")
+
+    db.collection("users", userData.doc_id, "company").add({"name": "Your Company"})
+
+    return "true"
+
+
 @app.route("/getSaleOrderData")
 def GetSaleOrderData():
     number = request.args.get("number")
@@ -431,6 +519,15 @@ def GetSaleOrderData():
     userData = UserData(number, company)
     print(userData.sale_order_data)
     return userData.sale_order_data
+
+
+@app.route("/getEQData")
+def GetEQData():
+    number = request.args.get("number")
+    company = request.args.get("company")
+    userData = UserData(number, company)
+    print(userData.eq_data)
+    return userData.eq_data
 
 
 @app.route("/getReceiveList")
@@ -457,6 +554,7 @@ def getPurchaseItemList():
     return userData.purchase_item_list
 
 
+# test
 @app.route("/getSalesTransactions")
 def getSaleTransactions():
     number = request.args.get("number")
@@ -464,6 +562,16 @@ def getSaleTransactions():
     company = request.args.get("company")
     userData = UserData(number, company)
     data = userData.SaleTransactions
+    return data
+
+
+@app.route("/getPurchaseTransactions")
+def getPurchaseTransactions():
+    number = request.args.get("number")
+    # global party_transaction_Dict
+    company = request.args.get("company")
+    userData = UserData(number, company)
+    data = userData.PurchaseTransactions
     return data
 
 
@@ -523,8 +631,13 @@ def getItemNames():
     number = request.args.get("number")
     # global party_transaction_Dict
     company = request.args.get("company")
+    # itemName = request.args.get("itemName")
     userData = UserData(number, company)
     itemNames = userData.itemNames
+
+    # for i in itemNames:
+    #     if(i.Name == itemName):
+    #         return jsonify(i)
     # source = request.args.get('partyName')
     # party_transaction_Dict = jsonify(party_transaction_Dict[str(source)])
     temp = None
@@ -534,6 +647,28 @@ def getItemNames():
     temp = jsonify(itemNames)
     print("Temp  : " + str(temp))
     return temp
+
+
+@app.route("/getItemDetails")
+def getItemDetails():
+    number = request.args.get("number")
+    company = request.args.get("company")
+    userData = UserData(number, company)
+    item_name = request.args.get("itemName")
+    item_ref = db.collection(
+        "users", userData.doc_id, "company", userData.companyID, "items"
+    ).where("ItemName", "==", str(item_name))
+
+    itemDoc = item_ref.get()
+    for doc in itemDoc:
+        json_data = {
+            "itemName": doc.to_dict()["ItemName"],
+            "SalePrice": doc.to_dict()["Sale_Price"],
+            "WholesalePrice": doc.to_dict()["Wholesale_Price"],
+            "Units": doc.to_dict()["Units"],
+        }
+    # print(json_data)
+    return json_data
 
 
 @app.route("/getSalesData")
@@ -942,6 +1077,8 @@ def AddSaleOrderData():
     data = request.args.get("json_data")
     number = request.args.get("number")
     company = request.args.get("company")
+    total_amount = request.args.get("totalAmount")
+    received_amount = request.args.get("receivedAmount")
     data = json.loads(data)
     print(data[0]["item"])
     ##Data Upload Code
@@ -957,33 +1094,45 @@ def AddSaleOrderData():
         print(str(data[0]["party_name_dropdown"]))
         if (str(doc.to_dict()["PartyName"]), "==", str(data[0]["party_name_dropdown"])):
             print("condition Satisfied")
+            amount = 0
             for i in range(len(data)):
+                amount = amount + int(data[i]["amount"])
                 db.collection(
                     "users",
                     userData.doc_id,
                     "company",
                     userData.companyID,
-                    "SaleOrder",
-                    # str(doc.id),
-                    # "PartyDetails",
+                    "parties",
+                    str(doc.id),
+                    "PartyDetails",
                 ).add(
                     {
-                        # "Item": data["item"][0],
-                        # "Quantity": data["qty"][0],
-                        # "Price": data["price"][0],
-                        # "Amount": data["amount"][0],
                         "Item": data[i]["item"],
                         "Number": int(data[i]["qty"]),
                         "Price": int(data[i]["price"]),
-                        "Total": int(data[i]["amount"]),
-                        "Type": "Sale",
-                        "Balance": int(data[i]["balance"]),
-                        "Date": str(data[i]["Date"]),
-                        "Due_Date": str(data[i]["Due_Date"]),
-                        "Invoice_no": int(data[i]["Invoice_no"]),
-                        "Party": str(data[i]["party_name_dropdown"]),
+                        "Total": float(data[i]["amount"]),
+                        "Type": "SaleOrder",
+                        "Balance": float(data[i]["amount"]) - float(received_amount),
+                        "Date": data[i]["order_date"],
+                        "Due_Date": data[i]["due_date"],
+                        "order_no": int(data[i]["order_no"]),
+                        "tax": data[i]["tax"],
+                        "tax_amount": data[i]["tax_amount"],
+                        "unit": data[i]["unit"],
+                        "StateOfSupply": data[i]["State_of_supply"],
                     }
                 )
+            #############################################
+            db.collection(
+                "users", userData.doc_id, "company", userData.companyID, "parties"
+            ).document(doc.id).update(
+                {
+                    "Balance": firestore.Increment(
+                        (float(total_amount) - float(received_amount))
+                    )
+                }
+            )
+            #############################################
     # for i in range(len(data)):
     #     item_ref = db.collection(
     #         "users", userData.doc_id, "company", userData.companyID, "items"
@@ -1344,7 +1493,6 @@ def checkEQData():
     company = request.args.get("company")
     userData = UserData(number, company)
     return str(userData.e_q_flg)
-
-
+    
 if __name__ == "__main__":
     app.run(host="0.0.0.0",port="8002")
